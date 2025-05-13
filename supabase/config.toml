@@ -1,1 +1,5 @@
+
 project_id = "mlwrqykozlznafwabexe"
+
+[functions.generate-contract]
+verify_jwt = true

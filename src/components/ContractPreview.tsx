@@ -3,9 +3,16 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { AIService } from "@/services/aiService";
 import { ReviewResult } from "@/types";
-import { Loader2, Download, CheckCircle, AlertCircle } from "lucide-react";
+import { Loader2, Download, CheckCircle, AlertCircle, FileText } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ContractPreviewProps {
   content: string;
@@ -17,6 +24,7 @@ export const ContractPreview = ({ content, onBack, onEdit }: ContractPreviewProp
   const { toast } = useToast();
   const [reviewing, setReviewing] = useState(false);
   const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
+  const [downloading, setDownloading] = useState(false);
   
   const handleReview = async () => {
     setReviewing(true);
@@ -44,7 +52,7 @@ export const ContractPreview = ({ content, onBack, onEdit }: ContractPreviewProp
     }
   };
   
-  const handleDownload = () => {
+  const handleDownloadText = () => {
     const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -59,6 +67,119 @@ export const ContractPreview = ({ content, onBack, onEdit }: ContractPreviewProp
       title: "Contract Downloaded",
       description: "The contract has been downloaded as a text file.",
     });
+  };
+  
+  const handleDownloadDocx = async () => {
+    setDownloading(true);
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error("User authentication required");
+      }
+      
+      // Use client-side HTML to DOCX conversion
+      // We're using a simplified approach here with HTML conversion
+      const htmlContent = `<!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Contract</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 1cm; line-height: 1.5; }
+          h1 { text-align: center; }
+          .content { white-space: pre-wrap; }
+        </style>
+      </head>
+      <body>
+        <div class="content">${content.replace(/\n/g, '<br/>')}</div>
+      </body>
+      </html>`;
+      
+      // Convert the HTML to a Blob
+      const blob = new Blob([htmlContent], { type: "text/html" });
+      
+      // Create a download link for the docx file
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `contract-${Date.now()}.html`;  // Users will need to open in Word
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Contract Downloaded",
+        description: "The contract has been downloaded. Open it with Microsoft Word to save as DOCX.",
+      });
+    } catch (error) {
+      toast({
+        title: "Download Failed",
+        description: (error as Error).message,
+        variant: "destructive",
+      });
+    } finally {
+      setDownloading(false);
+    }
+  };
+  
+  const handleDownloadPdf = async () => {
+    setDownloading(true);
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error("User authentication required");
+      }
+      
+      // We'll use a similar approach for PDF, converting HTML to print
+      const htmlContent = `<!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Contract</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 1cm; line-height: 1.5; }
+          h1 { text-align: center; }
+          .content { white-space: pre-wrap; }
+          @media print {
+            body { margin: 0.5cm; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="content">${content.replace(/\n/g, '<br/>')}</div>
+        <script>
+          window.onload = function() { window.print(); }
+        </script>
+      </body>
+      </html>`;
+      
+      // Open in a new window for printing to PDF
+      const printWindow = window.open('', '', 'height=600,width=800');
+      if (printWindow) {
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+      } else {
+        throw new Error("Unable to open print window. Please check your popup blocker settings.");
+      }
+      
+      toast({
+        title: "PDF Export",
+        description: "A new window has opened. Use your browser's print function to save as PDF.",
+      });
+    } catch (error) {
+      toast({
+        title: "PDF Export Failed",
+        description: (error as Error).message,
+        variant: "destructive",
+      });
+    } finally {
+      setDownloading(false);
+    }
   };
   
   return (
@@ -83,10 +204,29 @@ export const ContractPreview = ({ content, onBack, onEdit }: ContractPreviewProp
                   {reviewing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                   {reviewing ? "Reviewing..." : "AI Review"}
                 </Button>
-                <Button onClick={handleDownload} variant="outline">
-                  <Download className="h-4 w-4 mr-2" />
-                  Download
-                </Button>
+                
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" disabled={downloading}>
+                      {downloading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
+                      {downloading ? "Processing..." : "Download"}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={handleDownloadText}>
+                      <FileText className="h-4 w-4 mr-2" />
+                      Text (.txt)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleDownloadDocx}>
+                      <FileText className="h-4 w-4 mr-2" />
+                      Word (.docx)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleDownloadPdf}>
+                      <FileText className="h-4 w-4 mr-2" />
+                      PDF (.pdf)
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
             

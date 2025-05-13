@@ -1,5 +1,6 @@
 
 import { ContractFormData, ReviewResult } from "@/types";
+import { supabase } from "@/integrations/supabase/client";
 
 export class AIService {
   private static apiKey: string | null = null;
@@ -7,6 +8,43 @@ export class AIService {
   static setApiKey(key: string): void {
     this.apiKey = key;
     localStorage.setItem('openai_api_key', key);
+    
+    // If user is authenticated, save the API key to Supabase
+    const user = supabase.auth.getUser();
+    user.then(({ data }) => {
+      if (data?.user) {
+        // Check if the user already has an API key stored
+        supabase
+          .from('api_keys')
+          .select('*')
+          .eq('user_id', data.user.id)
+          .then(({ data: existingKeys, error }) => {
+            if (error) {
+              console.error("Error checking existing API keys:", error);
+              return;
+            }
+            
+            if (existingKeys && existingKeys.length > 0) {
+              // Update existing API key
+              supabase
+                .from('api_keys')
+                .update({ openai_key: key, updated_at: new Date() })
+                .eq('user_id', data.user.id)
+                .then(({ error }) => {
+                  if (error) console.error("Error updating API key:", error);
+                });
+            } else {
+              // Insert new API key
+              supabase
+                .from('api_keys')
+                .insert({ user_id: data.user.id, openai_key: key })
+                .then(({ error }) => {
+                  if (error) console.error("Error saving API key:", error);
+                });
+            }
+          });
+      }
+    });
   }
 
   static getApiKey(): string | null {
@@ -19,6 +57,20 @@ export class AIService {
   static clearApiKey(): void {
     this.apiKey = null;
     localStorage.removeItem('openai_api_key');
+    
+    // If user is authenticated, remove API key from Supabase
+    const user = supabase.auth.getUser();
+    user.then(({ data }) => {
+      if (data?.user) {
+        supabase
+          .from('api_keys')
+          .delete()
+          .eq('user_id', data.user.id)
+          .then(({ error }) => {
+            if (error) console.error("Error deleting API key:", error);
+          });
+      }
+    });
   }
 
   static async generateContract(
@@ -26,70 +78,41 @@ export class AIService {
     formData: ContractFormData,
     template: string
   ): Promise<string> {
-    const apiKey = this.getApiKey();
-    if (!apiKey) {
-      throw new Error("API key not set");
-    }
-
     try {
-      console.log("Generating contract with OpenAI...");
-      
-      // Replace template placeholders with form data
-      let contractContent = template;
-      Object.keys(formData).forEach(key => {
-        const placeholder = `[${key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1').trim()}]`;
-        contractContent = contractContent.replace(new RegExp(placeholder, 'g'), formData[key]);
-      });
-      
-      // Prepare prompt for OpenAI
-      const prompt = `
-        Act as a legal expert specialized in Indonesian law. 
-        I need you to create a complete ${contractType} contract based on the following information:
-        
-        Contract Type: ${contractType}
-        
-        Form Data:
-        ${Object.entries(formData).map(([key, value]) => `${key}: ${value}`).join('\n')}
-        
-        Initial Template:
-        ${contractContent}
-        
-        Please generate a complete, professional, and legally sound contract following Indonesian law standards.
-        The contract should include all standard sections, clauses, terms, and provisions typical for this type of agreement in Indonesia.
-        Include references to relevant Indonesian regulations where appropriate.
-        Format the output as a properly structured legal document with numbered sections.
-        DO NOT include any explanations or commentary - ONLY return the contract text.
-      `;
-
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages: [
-            {
-              role: "system",
-              content: "You are a legal expert specializing in Indonesian law and contract drafting."
-            },
-            {
-              role: "user",
-              content: prompt
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 4000
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}`);
+      const apiKey = this.getApiKey();
+      if (!apiKey) {
+        throw new Error("API key not set");
       }
-
-      const data = await response.json();
-      return data.choices[0].message.content;
+      
+      console.log("Generating contract with OpenAI via edge function...");
+      
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        throw new Error("User authentication required");
+      }
+      
+      // Call our edge function
+      const { data, error } = await supabase.functions.invoke('generate-contract', {
+        body: {
+          contractType,
+          formData,
+          templateSample: template,
+          userId: user.id
+        }
+      });
+      
+      if (error) {
+        console.error("Edge function error:", error);
+        throw new Error(`Failed to generate contract: ${error.message}`);
+      }
+      
+      if (!data || !data.content) {
+        throw new Error("No content returned from the edge function");
+      }
+      
+      return data.content;
     } catch (error) {
       console.error("Error generating contract:", error);
       throw new Error("Failed to generate contract. Please try again.");
