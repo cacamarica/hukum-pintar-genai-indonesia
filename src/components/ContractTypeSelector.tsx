@@ -1,7 +1,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ContractType, ContractTemplate } from "@/types";
-import { FileText, FilePen, File, Clipboard, Contract } from "lucide-react";
+import { FileText, FilePen, File, Clipboard, Contact } from "lucide-react";
 import { contractTemplates } from "@/config/contractTemplates";
 
 interface ContractTypeSelectorProps {
