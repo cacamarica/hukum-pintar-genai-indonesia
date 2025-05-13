@@ -1,35 +1,44 @@
-
 import { useState } from "react";
 import { Header } from "@/components/Header";
 import { ContractTypeSelector } from "@/components/ContractTypeSelector";
 import { ContractForm } from "@/components/ContractForm";
 import { ContractPreview } from "@/components/ContractPreview";
+import { ContractChat } from "@/components/ContractChat";
 import { ApiKeyRequired } from "@/components/ApiKeyRequired";
+import { ApiKeyTester } from "@/components/ApiKeyTester";
+import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { useApiKey } from "@/context/ApiKeyContext";
-import { ContractType } from "@/types";
+import { ContractType, ContractFormData } from "@/types";
 import { Toaster } from "@/components/ui/toaster";
+import { Button } from "@/components/ui/button";
+import { MessageSquare, FileText } from "lucide-react";
 
 const Index = () => {
   const { isApiKeySet } = useApiKey();
   const [selectedType, setSelectedType] = useState<ContractType | null>(null);
   const [generatedContent, setGeneratedContent] = useState<string | null>(null);
+  const [formData, setFormData] = useState<ContractFormData>({});
+  const [viewMode, setViewMode] = useState<'preview' | 'chat'>('preview');
   
   const handleTypeSelect = (type: ContractType) => {
     setSelectedType(type);
     setGeneratedContent(null);
+    setFormData({});
   };
   
   const handleBack = () => {
     setSelectedType(null);
     setGeneratedContent(null);
+    setFormData({});
   };
   
   const handleFormBack = () => {
     setGeneratedContent(null);
   };
   
-  const handleGenerated = (content: string) => {
+  const handleGenerated = (content: string, data: ContractFormData) => {
     setGeneratedContent(content);
+    setFormData(data);
   };
   
   const renderContent = () => {
@@ -38,13 +47,52 @@ const Index = () => {
     }
     
     if (generatedContent) {
-      return (
-        <ContractPreview 
-          content={generatedContent} 
-          onBack={handleFormBack}
-          onEdit={setGeneratedContent}
-        />
-      );
+      if (viewMode === 'chat') {
+        return (
+          <ContractChat 
+            initialContract={generatedContent} 
+            contractType={selectedType || ''} 
+            formData={formData}
+            onBack={handleFormBack}
+          />
+        );
+      } else {
+        return (
+          <>
+            <div className="w-full max-w-6xl mx-auto mt-8 px-4 flex justify-between items-center">
+              <Button variant="outline" onClick={handleFormBack}>
+                ← Back to Form
+              </Button>
+              
+              <div className="flex gap-2">
+                <Button 
+                  variant={viewMode === 'preview' ? "default" : "outline"} 
+                  onClick={() => setViewMode('preview')}
+                  className={viewMode === 'preview' ? "bg-legal-navy text-white" : undefined}
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Standard View
+                </Button>
+                <Button 
+                  variant={viewMode === 'chat' ? "default" : "outline"} 
+                  onClick={() => setViewMode('chat')}
+                  className={viewMode === 'chat' ? "bg-legal-navy text-white" : undefined}
+                >
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Chat Interface
+                </Button>
+              </div>
+            </div>
+            <ContractPreview 
+              content={generatedContent} 
+              contractType={selectedType}
+              formData={formData}
+              onBack={handleFormBack}
+              onEdit={setGeneratedContent}
+            />
+          </>
+        );
+      }
     }
     
     if (selectedType) {
@@ -52,13 +100,15 @@ const Index = () => {
         <ContractForm 
           type={selectedType} 
           onBack={handleBack}
-          onGenerated={handleGenerated}
+          onGenerated={(content) => handleGenerated(content, formData)}
         />
       );
     }
     
     return (
       <div className="container mx-auto px-4">
+        {isApiKeySet && <ApiKeyTester autoTest showFullMessage={false} />}
+        
         <div className="max-w-3xl mx-auto mt-12 text-center">
           <h1 className="text-4xl font-bold text-legal-navy mb-4">Indonesian Legal Contract AI</h1>
           <p className="text-lg text-gray-600 mb-8">
@@ -66,6 +116,8 @@ const Index = () => {
             Select a contract type below to get started.
           </p>
         </div>
+        
+        <ConnectionStatus />
         
         <ContractTypeSelector onSelect={handleTypeSelect} />
         

@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +12,7 @@ import { AIService } from "@/services/aiService";
 interface ContractFormProps {
   type: ContractType;
   onBack: () => void;
-  onGenerated: (content: string) => void;
+  onGenerated: (content: string, formData: ContractFormData) => void;
 }
 
 export const ContractForm = ({ type, onBack, onGenerated }: ContractFormProps) => {
@@ -37,7 +36,7 @@ export const ContractForm = ({ type, onBack, onGenerated }: ContractFormProps) =
         formData,
         template.sample
       );
-      onGenerated(content);
+      onGenerated(content, formData);
     } catch (err) {
       setError((err as Error).message);
     } finally {
